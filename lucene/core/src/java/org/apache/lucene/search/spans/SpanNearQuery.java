@@ -46,9 +46,10 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
   public static class Builder {
     private final boolean ordered;
     private final String field;
-    private final List<SpanQuery> clauses = new LinkedList<>();
+      final List<SpanQuery> clauses = new LinkedList<>();
     private int slop;
-
+    //boolean isNested=false;
+    //float sumWeightedSubspans ;
     /**
      * Construct a new builder
      * @param field the field to search in
@@ -86,7 +87,13 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
       this.slop = slop;
       return this;
     }
-
+    /**
+     * Set the isnested for this query
+     */
+    public Builder setIsNested(boolean isNested) {
+      //this.isNested = isNested;
+      return this;
+    }
     /**
      * Build the query
      */
@@ -110,9 +117,10 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
     return new Builder(field, false);
   }
 
-  protected List<SpanQuery> clauses;
+   List<SpanQuery> clauses;
   protected int slop;
   protected boolean inOrder;
+  boolean isNested;
 
   protected String field;
 
@@ -127,7 +135,7 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
    * @param slop The slop value
    * @param inOrder true if order is important
    */
-  public SpanNearQuery(SpanQuery[] clausesIn, int slop, boolean inOrder) {
+  public SpanNearQuery(SpanQuery[] clausesIn, int slop, boolean inOrder,boolean... isNestedA) {
     this.clauses = new ArrayList<>(clausesIn.length);
     for (SpanQuery clause : clausesIn) {
       if (this.field == null) {                               // check field
@@ -139,6 +147,10 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
     }
     this.slop = slop;
     this.inOrder = inOrder;
+    if (isNestedA.length>0)
+    {
+      this.isNested = isNestedA[0];
+    }
   }
 
   /** Return the clauses whose spans are matched. */
@@ -176,10 +188,10 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
   }
 
   @Override
-  public SpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
+  public SpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {// is nested not passed here
     List<SpanWeight> subWeights = new ArrayList<>();
     for (SpanQuery q : clauses) {
-      subWeights.add(q.createWeight(searcher, false));
+      subWeights.add(q.createWeight(searcher, false));// subWeights.add(q.createWeight(searcher, false));
     }
     return new SpanNearWeight(subWeights, searcher, needsScores ? getTermContexts(subWeights) : null);
   }
@@ -187,9 +199,11 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
   public class SpanNearWeight extends SpanWeight {
 
     final List<SpanWeight> subWeights;
+    //boolean isNested = false; // No need to add cause super can access subclass and isNested should be true here
 
-    public SpanNearWeight(List<SpanWeight> subWeights, IndexSearcher searcher, Map<Term, TermContext> terms) throws IOException {
-      super(SpanNearQuery.this, searcher, terms);
+    public SpanNearWeight(List<SpanWeight> subWeights, IndexSearcher searcher, Map<Term, TermContext> terms) throws IOException {// is nested not apassed needs to be passed
+      //this.isNested=this.this$0.isNested;// access anonymous inner classes like this //https://stackoverflow.com/questions/27145010/whats-the-meaning-of-this-this0//this$0 refers to teh paarent object
+      super(SpanNearQuery.this, searcher, terms);// it has a super class with correct flags, but this on eis overriden :/
       this.subWeights = subWeights;
     }
 
@@ -210,7 +224,33 @@ public class SpanNearQuery extends SpanQuery implements Cloneable {
 
       ArrayList<Spans> subSpans = new ArrayList<>(clauses.size());
       for (SpanWeight w : subWeights) {
+
         Spans subSpan = w.getSpans(context, requiredPostings);
+        if (subSpan != null) {
+          subSpans.add(subSpan);
+        } else {
+          return null; // all required
+        }
+      }
+
+      // all NearSpans require at least two subSpans
+      boolean [] isNestedA = new boolean[1];
+      isNestedA[0] = this.isNested;
+      return (!inOrder) ? new NearSpansUnordered(slop, subSpans,isNestedA)
+          : new NearSpansOrdered(slop, subSpans);
+    }
+    @Override
+    public Spans getSpans(final LeafReaderContext context, Postings requiredPostings, Integer... weigh) throws IOException {
+
+      Terms terms = context.reader().terms(field);
+      if (terms == null) {
+        return null; // field does not exist
+      }
+
+      ArrayList<Spans> subSpans = new ArrayList<>(clauses.size());
+      for (SpanWeight w : subWeights) {
+
+        Spans subSpan = w.getSpans(context, requiredPostings,weigh);
         if (subSpan != null) {
           subSpans.add(subSpan);
         } else {

@@ -16,7 +16,7 @@
  */
 package org.apache.lucene.search.spans;
 
-
+import java.io.IOException;
 import java.io.IOException;
 import java.util.Map;
 
@@ -73,6 +73,7 @@ public abstract class SpanWeight extends Weight {
   protected final Similarity similarity;
   protected final Similarity.SimWeight simWeight;
   protected final String field;
+  boolean isNested;
 
   /**
    * Create a new SpanWeight
@@ -82,11 +83,48 @@ public abstract class SpanWeight extends Weight {
    *                     be null if scores are not required
    * @throws IOException on error
    */
-  public SpanWeight(SpanQuery query, IndexSearcher searcher, Map<Term, TermContext> termContexts) throws IOException {
+  public SpanWeight(SpanQuery query, IndexSearcher searcher, Map<Term, TermContext> termContexts,boolean... isNestedP) throws IOException {
     super(query);
+   // try{
+      //if (isNestedP.length>0)
+    if(query instanceof  SpanNearQuery) {
+      SpanNearQuery q = (SpanNearQuery) query;// Can be spantermquery asa well we need to check and cast only span near query
+      this.isNested = q.isNested; //.["isNested"];// query here has a isNested value set not able to use it.
+    }
+    //}
+//    catch(IOException e){
+//      e.printStackT  race();
+//    }
+
+// Important to overlaod methods withour causing problems for other span query classes
+//    use something like this:
+//
+//    public void addError(String path, String key, Object... params) {
+//    }
+//    The params variable is optional. It is treated as a nullable array of Objects.
+//
+//        Strangely, I couldn't find anything about this in the documentation, but it works!
+//
+//    This is "new" in Java 1.5 and beyond (not supported in Java 1.4 or earlier).
+
     this.field = query.getField();
     this.similarity = searcher.getSimilarity(termContexts != null);
     this.simWeight = buildSimWeight(query, searcher, termContexts);
+
+    //recursively add boost for each sub term in the span//not changing term weights for BM25 similarity.
+//    try {
+//      int subterms = this.simWeight["delegateWeight"]["subStats"].length;
+//      for (int i=0;i<subterms;i++)
+//
+//      {
+//          this.simWeight["delegateWeight"] ["subStats"][i].boost = query["boost"];
+//
+//      }
+//    }
+//    catch(IOException e) {
+//      e.printStackTrace();
+//    }
+    System.out.println("Fixed inner boosts");
   }
 
   private Similarity.SimWeight buildSimWeight(SpanQuery query, IndexSearcher searcher, Map<Term, TermContext> termContexts) throws IOException {
@@ -115,6 +153,9 @@ public abstract class SpanWeight extends Weight {
    * @throws IOException on error
    */
   public abstract Spans getSpans(LeafReaderContext ctx, Postings requiredPostings) throws IOException;
+  public  Spans getSpans(LeafReaderContext ctx, Postings requiredPostings,Integer... weigh) throws IOException{
+    throw new IOException("method not overridden");
+  }
 
   @Override
   public float getValueForNormalization() throws IOException {
@@ -130,12 +171,25 @@ public abstract class SpanWeight extends Weight {
 
   @Override
   public SpanScorer scorer(LeafReaderContext context) throws IOException {
-    final Spans spans = getSpans(context, Postings.POSITIONS);
-    if (spans == null) {
-      return null;
-    }
-    final Similarity.SimScorer docScorer = getSimScorer(context);
-    return new SpanScorer(this, spans, docScorer);
+//    if(this.isNested)
+//    {
+//      Integer[] tmp = new Integer[1];
+//      tmp[0]=1;
+//      final Spans spans = getSpans(context, Postings.POSITIONS,tmp);
+//      if (spans == null) {
+//        return null;
+//      }
+//      final Similarity.SimScorer docScorer = getSimScorer(context);
+//      return new SpanScorer(this, spans, docScorer);
+//    }
+    //else {
+      final Spans spans = getSpans(context, Postings.POSITIONS);
+      if (spans == null) {
+        return null;
+      }
+      final Similarity.SimScorer docScorer = getSimScorer(context);
+      return new SpanScorer(this, spans, docScorer);
+    //}
   }
 
   /**

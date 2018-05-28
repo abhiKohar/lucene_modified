@@ -22,6 +22,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.LeafReaderContext;
@@ -39,12 +40,23 @@ public final class SpanBoostQuery extends SpanQuery {
 
   private final SpanQuery query;
   private final float boost;
+  boolean isNested=false;
 
   /** Sole constructor: wrap {@code query} in such a way that the produced
    *  scores will be boosted by {@code boost}. */
   public SpanBoostQuery(SpanQuery query, float boost) {
+    //query.
     this.query = Objects.requireNonNull(query);
+
     this.boost = boost;
+    String tmp = this.query.toString();
+    String [] cnt = tmp.split(Pattern.quote("^"));
+    if (cnt.length>2)
+    {
+      this.isNested = true;
+
+    }
+
   }
 
   /**
@@ -117,13 +129,14 @@ public final class SpanBoostQuery extends SpanQuery {
   @Override
   public SpanWeight createWeight(IndexSearcher searcher, boolean needsScores) throws IOException {
     final SpanWeight weight = query.createWeight(searcher, needsScores);
-    if (needsScores == false) {
+    needsScores=true;//remove need to be parameter this for debugging purposes.
+    if (needsScores == false) {//this is nested became true because of above params ^ regex -> not passed span near query, although passed everything around., look for that.
       return weight;
     }
     Map<Term, TermContext> terms = new TreeMap<>();
-    weight.extractTermContexts(terms);
-    weight.normalize(1f, boost);
-    return new SpanWeight(this, searcher, terms) {
+    weight.extractTermContexts(terms);// here lies the problem subweights simweight ==1
+    weight.normalize(1f, boost);// in normalize changes subweights sim weight boost to 1
+    return new SpanWeight(this, searcher, terms,isNested) {
       
       @Override
       public void extractTerms(Set<Term> terms) {
@@ -147,11 +160,26 @@ public final class SpanBoostQuery extends SpanQuery {
       
       @Override
       public Spans getSpans(LeafReaderContext ctx, Postings requiredPostings) throws IOException {
-        return weight.getSpans(ctx, requiredPostings);
+        if(isNested) {
+          Integer [] tmp = new Integer[1];
+          tmp[0]=1;
+          return weight.getSpans(ctx, requiredPostings, tmp);
+
+
+        }
+        else{
+          return weight.getSpans(ctx, requiredPostings);
+        }
       }
 
       @Override
       public SpanScorer scorer(LeafReaderContext context) throws IOException {
+        if (isNested==true) {// here when is Nested is true change the span windwo length os subspans
+          Integer [] weigh = new Integer[1];
+          weigh[0]=1;
+          return weight.scorer(context);
+        }
+        else
         return weight.scorer(context);
       }
 

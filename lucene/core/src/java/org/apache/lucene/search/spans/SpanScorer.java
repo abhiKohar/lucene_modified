@@ -15,13 +15,14 @@
  * limitations under the License.
  */
 package org.apache.lucene.search.spans;
-
+import java.io.IOException;
 
 import java.io.IOException;
 import java.util.Objects;
 
 import org.apache.lucene.search.DocIdSetIterator;
 import org.apache.lucene.search.Scorer;
+import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TwoPhaseIterator;
 import org.apache.lucene.search.similarities.Similarity;
 
@@ -31,9 +32,10 @@ import org.apache.lucene.search.similarities.Similarity;
  */
 public class SpanScorer extends Scorer {
 
-  protected final Spans spans;
+  protected  Spans spans;
   protected final Similarity.SimScorer docScorer;
-
+  boolean boosted = false;
+  Integer[] weigh ;
   /** accumulated sloppy freq (computed in setFreqCurrentDoc) */
   private float freq;
   /** number of matches (computed in setFreqCurrentDoc) */
@@ -41,8 +43,23 @@ public class SpanScorer extends Scorer {
   private int lastScoredDoc = -1; // last doc we called setFreqCurrentDoc() for
 
   /** Sole constructor. */
-  public SpanScorer(SpanWeight weight, Spans spans, Similarity.SimScorer docScorer) {
+  public SpanScorer(SpanWeight weight, Spans spans, Similarity.SimScorer docScorer,Integer... weigh) {// nobody is sending weigh cahnged design
     super(weight);
+    //try{
+      if (spans instanceof  NearSpansUnordered  )
+      {
+        NearSpansUnordered q = (NearSpansUnordered) spans;
+        if (q.spanboost) {
+          this.boosted = q.spanboost;
+          this.weigh = weigh;
+        }
+      }
+    //}
+//    catch(IOException e){
+//      e.printStackTrace();
+//
+//    }
+
     this.spans = Objects.requireNonNull(spans);
     this.docScorer = docScorer;
   }
@@ -81,12 +98,63 @@ public class SpanScorer extends Scorer {
    * <p>
    * This will be called at most once per document.
    */
+
+
+  protected final float sumweightedSubspans() throws IOException {
+
+  float sum = 0.0f;
+  // traverse spans recursively and sum them up ; in current case just need to sum up two ueries do that firse
+
+    return sum;
+
+  }
+
   protected final void setFreqCurrentDoc() throws IOException {
     freq = 0.0f;
     numMatches = 0;
 
     spans.doStartCurrentDoc();
 
+    if (this.boosted)//check when boosted is correct or not. this.spans.        --> weight.parentQuery.clauses [0]/[1] get boose  --> spans.subspans [0]/[1]//order fosmt change it always the same//checkc PAttern.boost is not affecting this.boosted (make it false.)
+    {
+      if(spans instanceof NearSpansUnordered)
+      {
+        NearSpansUnordered q = (NearSpansUnordered) spans;
+        SpanNearQuery.SpanNearWeight w;
+        if(weight instanceof SpanNearQuery.SpanNearWeight)
+        {
+          //w = (SpanNearQuery.SpanNearWeight) weight;
+
+          int i = q.subSpans.length;
+          for (int j =0;j<i;j++)
+          {
+            Query tmp = weight.getQuery();
+            //tmp = "";
+            System.out.println("yes");
+            SpanNearQuery tmp2 = (SpanNearQuery) tmp;
+            Object t = tmp2.clauses.get(j);
+            SpanBoostQuery sb = (SpanBoostQuery) t;
+
+            freq += 1.0/(q.subSpans[j].width() /(sb.getBoost()+1.0));
+          }
+        }
+
+      }
+
+//      int i = 0;//spans["subSpans"].length;
+//
+//      for (int j=0;j<i;j++)
+//      {
+//        freq += 0;
+//        //freq += spans.;
+//      }
+      //this.spans.spanWindow.totalSpanLength =this.spans.spanWindow.totalSpanLength /(this.spans.spanboost + 1.0); // cannot access spanwindow :/
+
+
+      return ;
+    }
+//set weight factor == true here. here it gets all the spans ans need to combine them usign weights  they maybe multiple nested spans -> not doing for that. Just for two span queries, that is what we do
+    //right now. treee like computation to affect span query
     assert spans.startPosition() == -1 : "incorrect initial start position, " + spans;
     assert spans.endPosition() == -1 : "incorrect initial end position, " + spans;
     int prevStartPos = -1;
@@ -122,23 +190,43 @@ public class SpanScorer extends Scorer {
    */
   private void ensureFreq() throws IOException {
     int currentDoc = docID();
-    if (lastScoredDoc != currentDoc) {
-      setFreqCurrentDoc();
-      lastScoredDoc = currentDoc;
+    if (this.boosted)
+    {
+      if (lastScoredDoc != currentDoc) {
+        setFreqCurrentDoc();
+        lastScoredDoc = currentDoc;
+      }
+    }
+    else {
+      if (lastScoredDoc != currentDoc) {
+        setFreqCurrentDoc();
+        lastScoredDoc = currentDoc;
+      }
     }
   }
 
   @Override
   public final float score() throws IOException {
+    //if this
     ensureFreq();
     return scoreCurrentDoc();
   }
+//  public final float score(Integer... weigh) throws IOException {
+//    ensureFreq(weigh);
+//    return scoreCurrentDoc(weigh);
+//  }
 
   @Override
   public final int freq() throws IOException {
     ensureFreq();
     return numMatches;
   }
+
+
+//  public final int freq(Integer... weigh) throws IOException {
+//    ensureFreq(weigh);
+//    return numMatches;
+//  }
 
   /** Returns the intermediate "sloppy freq" adjusted for edit distance
    *  @lucene.internal */

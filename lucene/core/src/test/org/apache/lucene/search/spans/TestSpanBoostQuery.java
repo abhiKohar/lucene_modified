@@ -16,11 +16,79 @@
  */
 package org.apache.lucene.search.spans;
 
+import java.io.IOException;
+import org.apache.lucene.search.similarities.*;
+import org.apache.lucene.analysis.MockAnalyzer;
+import org.apache.lucene.document.Document;
+import org.apache.lucene.document.Field;
+import org.apache.lucene.index.IndexReader;
+import org.apache.lucene.index.RandomIndexWriter;
 import org.apache.lucene.index.Term;
+import org.apache.lucene.search.CheckHits;
+import org.apache.lucene.search.IndexSearcher;
+import org.apache.lucene.search.Query;
+import org.apache.lucene.search.TopDocs;
+//import org.apache.lucene.search.similarities.BM25Similarity;
+import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.LuceneTestCase;
-
+import org.apache.lucene.search.SortField;
+import org.apache.lucene.search.Sort;
+import org.apache.lucene.search.ScoreDoc;
 
 public class TestSpanBoostQuery extends LuceneTestCase {
+
+  private IndexSearcher searcher;
+  private IndexReader reader;
+  private Directory directory;
+
+  public static final String field = "field";
+
+  @Override
+  public void setUp() throws Exception {
+    super.setUp();
+    directory = newDirectory();
+    RandomIndexWriter writer= new RandomIndexWriter(random(), directory, newIndexWriterConfig(new MockAnalyzer(random())).setMergePolicy(newLogMergePolicy()));
+    for (int i = 0; i < docFields.length; i++) {
+      Document doc = new Document();
+      doc.add(newTextField(field, docFields[i], Field.Store.YES));
+      writer.addDocument(doc);
+    }
+    writer.forceMerge(1);
+    reader = writer.getReader();
+    writer.close();
+    searcher = newSearcher(getOnlyLeafReader(reader));
+  }
+
+  @Override
+  public void tearDown() throws Exception {
+    reader.close();
+    directory.close();
+    super.tearDown();
+  }
+
+  private String[] docFields = {
+      "w1 w2 w3 w4 w5",//"w1 w2 w3 w4 w5 w1",//"w1 w2 w3 w4 w5",
+      //"w1 w3 w2 w3",
+      //"w1 xx w2 yy w3",
+      //"w1 w3 xx w2 yy w3",
+      "u2 u2 u1",
+      "u2 xx u2 u1",
+      "u2 u2 xx u1",
+      "u2 xx u2 yy u1",
+      "u2 xx u1 u2",
+      "u2 u1 xx u2",
+      "u1 u2 xx u2",
+      "t1 t2 t1 t3 t2 t3",
+      "s2 s1 s1 xx xx s2 xx s2 xx s1 xx xx xx xx xx s2 xx",
+      "r1 s11",
+      "r1 s21"
+  };
+
+  private void checkHits(Query query, int[] results) throws IOException {
+    CheckHits.checkHits(random(), query, field, searcher, results);
+  }
+
+
 
   public void testEquals() {
     final float boost = random().nextFloat() * 3 - 1;
@@ -45,6 +113,64 @@ public class TestSpanBoostQuery extends LuceneTestCase {
         new SpanTermQuery(new Term("foo", "bar")),
         new SpanTermQuery(new Term("foo", "baz")));
     assertEquals("(spanOr([foo:bar, foo:baz]))^2.0", new SpanBoostQuery(bq, 2).toString());
-  }
+// test boosting for nested queries
+    SpanTermQuery q11 =  new SpanTermQuery(new Term(field, "w1"));
+    SpanTermQuery q12 =  new SpanTermQuery(new Term(field, "w2"));
+    SpanTermQuery q13 =  new SpanTermQuery(new Term(field, "w3"));
+    SpanNearQuery q1 = new SpanNearQuery(new SpanQuery[] { q11,q12}, 10, false);
+    //q1.setBoost(2.0);
+    SpanBoostQuery bq1 = new SpanBoostQuery(q1, 4);
+    SpanNearQuery q2 = new SpanNearQuery(new SpanQuery[] { q12,q13}, 10, false);
+    //q2.setBoost(3.0);
+    SpanBoostQuery bq2 = new SpanBoostQuery(q2, 10);
+//    IllegalArgumentException expected = expectThrows(IllegalArgumentException.class, () -> {
+//      new SpanNearQuery(new SpanQuery[] { q1, q2 }, 10, true);
+//    });
+//    assertTrue(expected.getMessage().contains("must have same field"));
 
+//   try {
+//     System.out.print(1);//setUp();
+//   }
+//   catch(IOException e) {
+//     e.printStackTrace();
+//   }
+    SpanWeight tmp;
+    boolean [] isNestedA = new boolean [1];
+    isNestedA[0]=true;
+    SpanNearQuery nspan =  new SpanNearQuery(new SpanQuery[] { bq1, bq2 }, 10, false,isNestedA);// add the isNested true here, easiest way to pass, user has to tell thta scores need to be boosted
+    SpanBoostQuery bnspan = new SpanBoostQuery(nspan, 5);
+//    try {
+//      //SpanWeight w = bnspan.createWeight(searcher, true);
+//    System.out.println(1);
+//    }
+//
+//    catch(IOException e) {
+//      e.printStackTrace();
+//    }
+    Sort sort = new Sort(new SortField[] { SortField.FIELD_SCORE, SortField.FIELD_DOC });
+    TopDocs t_docs ;
+    //SpanScorer s  = bnspan.createWeight(searcher, true).scorer(reader.getto().);
+    String str_bnspan = bnspan.toString();
+    //bnspan.scorer()
+    searcher.setSimilarity(new BM25Similarity());
+    try {
+       t_docs =  searcher.search(bnspan, 5,  sort, true , true);
+      System.out.println("yes");
+       System.out.println(t_docs.totalHits);
+      System.out.println(t_docs.getMaxScore());
+      System.out.println("yes 2");
+      //TopDocs results = searcher.search(bnspan, filter, 10); // Apply filter here.
+      ScoreDoc[] hits = t_docs.scoreDocs;
+      for(ScoreDoc hit : hits)
+      {
+        System.out.println(searcher.explain(bnspan, hit.doc)); // Filter won't affect this either way.
+      }
+    }
+    catch(IOException e) {
+      e.printStackTrace();
+    }
+
+      System.out.print(1);
+  }
+//Creates a new Similarity.SimScorer to score matching documents from a segment of the inverted index.//changed for BM25 scorer random scoring to increase doc exposure
 }

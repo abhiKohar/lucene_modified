@@ -30,20 +30,27 @@ import org.apache.lucene.util.PriorityQueue;
 public class NearSpansUnordered extends ConjunctionSpans {
 
   private final int allowedSlop;
-  private SpanTotalLengthEndPositionWindow spanWindow;
+   SpanTotalLengthEndPositionWindow spanWindow;
+  boolean  spanboost;// add boost for each span query here and// should not cause problems divisision by zero as smoothing will be done.
+  float width_boosted;// boosted width with the span weight just need to add to get sloppy frequency.
 
-  public NearSpansUnordered(int allowedSlop, List<Spans> subSpans)
+  public NearSpansUnordered(int allowedSlop, List<Spans> subSpans,boolean... isNestedA)//second param in is NEsted
   throws IOException {
     super(subSpans);
 
     this.allowedSlop = allowedSlop;
     this.spanWindow = new SpanTotalLengthEndPositionWindow();
+    if(isNestedA.length >0)
+    {
+      this.spanboost = isNestedA[0]; // second term is the boost
+    }
   }
 
   /** Maintain totalSpanLength and maxEndPosition */
-  private class SpanTotalLengthEndPositionWindow extends PriorityQueue<Spans> {
+  public class SpanTotalLengthEndPositionWindow extends PriorityQueue<Spans> {
     int totalSpanLength;
     int maxEndPosition;
+
 
     public SpanTotalLengthEndPositionWindow() {
       super(subSpans.length);
@@ -54,8 +61,9 @@ public class NearSpansUnordered extends ConjunctionSpans {
       return positionsOrdered(spans1, spans2);
     }
 
-    void startDocument() throws IOException {
+    void startDocument() throws IOException {//receive a boost
       clear();
+      //spanboost = 2;//put span boost here for outer span queries
       totalSpanLength = 0;
       maxEndPosition = -1;
       for (Spans spans : subSpans) {
@@ -170,6 +178,14 @@ public class NearSpansUnordered extends ConjunctionSpans {
     for (Spans spans : subSpans) {
       spans.collect(collector);
     }
+
+
+  }
+
+  public int numSpans() throws IOException {
+
+     return subSpans.length;
+
   }
 
 }
