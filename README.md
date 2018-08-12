@@ -74,4 +74,3 @@ To incorporate the changes following design and implementations have been made.
 Changes to spanboostQuery so that we can tell whether the nested query is boosted. This inherently uses spannearsunordered and spannearsordered - which needs to be changed to modify and pass the nested parameter. once that is identified - we need to pass the boost to spanweight class and span scorer so that while calculating the span we can adjust the score and weight of each span accordingly.  
 
 This has been tested by writing test cases in the TestSpanBoostAbhinav and TestSpanBoostQuery.
- 
