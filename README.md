@@ -1,6 +1,6 @@
 1) Purpose of the software // What is the software for? 
 
-Current lucene/elastic search implementations do not support boosting for nested span queries. Though you can specify boost as an argument but it has no effect on search results.  This is an effort to extend lucene to support such nested span queries. This is useful for entity semantic search and entity semantic document search. 
+Current lucene/elastic search implementations do not support boosting for nested span queries. Though you can specify boost as an argument but it has no effect on search results.  This is an effort to extend lucene to support such nested span queries. This is useful for entity semantic search and entity semantic document search. This makes the scoring more relevant.
 
 For example: 
 
