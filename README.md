@@ -1,7 +1,7 @@
 1) Purpose of the software // What is the software for? 
 
 Current lucene/elastic search implementations do not support boosting for nested span queries. Though you can specify boost as an argument but it has no effect on search results.  This is an effort to extend lucene to support such nested span queries. This is useful for entity semantic search and entity semantic document search. This makes the scoring more relevant.
-
+This is an example query.
 For example: 
 
 Span{ 
@@ -40,6 +40,23 @@ Boost : 20
 
 We can adjust our search results/scores based on the above boosting factors. 
 
+Actual query examples:
+Entity Search (find professors in data mining)
+GET /entity_search_cs_departments/_search_with_clusters?
+{  "search_request" :
+ {
+  "query": "#professor mining " ,    
+  "size":100
+   }
+}
+Entity-Semantic Document Search (find home pages of professors in data mining)
+GET /entity_search_cs_departments/_es_document_search?
+{
+  "search_request":{
+    "query": "@near ( #professor #email #phone ) @contains ( mining )",
+    "size" : 100
+  } 
+}
  
 2) System requirements and dependencies // What machine/OS/library requirements? How to set up the requirements/dependencies? 
 
